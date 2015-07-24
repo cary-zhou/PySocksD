@@ -25,32 +25,32 @@ class Connection:
 
     @coroutine
     def _auth(self):
-        ver, nmethods = unpack('!BB', (yield from self.reader.readexactly(2)))
+        read = self.reader.readexactly
+        ver, nmethods = unpack('!BB', (yield from read(2)))
         if ver != 0x05:
             logging.warning('Protocol version not match.')
             self.close()
             return
-        methods = yield from self.reader.readexactly(nmethods)
+        methods = yield from read(nmethods)
         if AUTH_METHOD_NONE not in methods:
             logging.warning('No acceptable auth methods.')
             self.close()
             return
         self.writer.write(pack('!BB', 0x05, AUTH_METHOD_NONE))
 
-        ver, cmd, rsv, atype = unpack('!BBBB', 
-                                      (yield from self.reader.readexactly(4)))
+        ver, cmd, rsv, atype = unpack('!BBBB', (yield from read(4)))
         if atype == ATYPE_IPV4:
-            addr = IPv4Address((yield from self.reader.readexactly(4)))
+            addr = IPv4Address((yield from read(4)))
         elif atype == ATYPE_IPV6:
-            addr = IPv6Address((yield from self.reader.readexactly(16)))
+            addr = IPv6Address((yield from read(16)))
         elif atype == ATYPE_NAME:
-            length = ord((yield from self.reader.readexactly(1)))
-            addr = (yield from self.reader.readexactly(length)).decode()
+            length = ord((yield from read(1)))
+            addr = (yield from read(length)).decode()
         else:
             logging.warning('Unknown address type.')
             self.close()
             return
-        port, = unpack('!H', (yield from self.reader.readexactly(2)))
+        port, = unpack('!H', (yield from read(2)))
         logging.debug('Request to %s:%s', addr, port)
 
 
