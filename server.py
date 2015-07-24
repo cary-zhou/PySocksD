@@ -2,6 +2,8 @@
 import logging
 from asyncio import start_server, get_event_loop, coroutine
 
+from conn import Connection
+
 
 class Server:
 
@@ -21,6 +23,9 @@ class Server:
         """Callback invoked when income connection establish."""
         peername = writer.get_extra_info('peername')[:2]
         logging.debug("TCP established with %s:%s." % peername)
+
+        conn = Connection(reader, writer)
+        yield from conn.run()
 
 
 def main():
