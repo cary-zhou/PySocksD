@@ -20,14 +20,34 @@ REP_CMD_NOT_SUPPORTED = 0x07
 REP_ATYPE_NOT_SUPPORTED = 0x08
 
 class Connection:
-    def __init__(self, reader, writer):
+    def __init__(self, reader, writer, udp_bind=None):
+        """Handshake with SOCKS client, handle TCP connect or create UDP relay.
+
+        udp_bind is the address which client send UDP to. Guess it if None.
+        """
+        self._loop = get_event_loop()
         self.reader = reader
         self.writer = writer
-        self._loop = get_event_loop()
+        if udp_bind is not None:
+            self._udp_bind = udp_bind
+        else:
+            self._udp_bind = self.writer.get_extra_info('sockname')[0]
+
 
     @coroutine
     def run(self):
         yield from self._auth()
+        cmd, (addr, port) = yield from self._parse_request()
+
+        if cmd == CMD_CONNECT:
+            yield from self._cmd_connect(addr, port)
+        elif cmd == CMD_BIND:
+            yield from self._cmd_bind(addr, port)
+        elif cmd == CMD_UDP_ASSOCIATE:
+            yield from self._cmd_udp_associate(addr, port)
+        else:
+            self._reply_fail(REP_CMD_NOT_SUPPORTED,
+                             'Unknown CMD.')
 
 
     def _reply_fail(self, rep, reason=''):
@@ -55,6 +75,9 @@ class Connection:
             return
         self.writer.write(pack('!BB', VERSION, AUTH_METHOD_NONE))
 
+
+    @coroutine
+    def _parse_request(self):
         ver, cmd, rsv, atype = unpack('!BBBB', (yield from read(4)))
         if atype == ATYPE_IPV4:
             addr = IPv4Address((yield from read(4)))
@@ -69,15 +92,8 @@ class Connection:
             return
         port, = unpack('!H', (yield from read(2)))
         logging.debug('Request to %s:%s', addr, port)
-        if cmd == CMD_CONNECT:
-            yield from self._cmd_connect(addr, port)
-        elif cmd == CMD_BIND:
-            yield from self._cmd_bind(addr, port)
-        elif cmd == CMD_UDP_ASSOCIATE:
-            yield from self._cmd_udp_associate(addr, port)
-        else:
-            self._reply_fail(REP_CMD_NOT_SUPPORTED,
-                             'Unknown CMD.')
+        return cmd, (addr, port)
+
 
     @coroutine
     def _cmd_connect(self, addr, port):
@@ -124,7 +140,20 @@ class Connection:
 
     @coroutine
     def _cmd_udp_associate(self, addr, port):
-        pass
+        if port:
+            client = (addr, port)
+        else:
+            client = None
+        self._relay = UDPRelay(bind=self._udp_bind, client=client)
+        self._relay.start()
+        logging.info('UDP relay started.')
+        try:
+            data = yield from self.reader.read()
+        except ConnectionError as e:
+            logging.debug('Connection error: %s', e)
+        self._relay.stop()
+        self._relay.close()
+        logging.info('UDP relay stopped.')
 
 
     def close(self):
