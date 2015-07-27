@@ -25,7 +25,7 @@ REP_ATYPE_NOT_SUPPORTED = 0x08
 
 class Connection:
     def __init__(self, reader, writer, udp_bind=None, udp_port_pool=None,
-                 auth_method=None):
+                 auth_method=None, disable_udp=False):
         """Handshake with SOCKS client, handle TCP connect or create UDP relay.
 
         udp_bind is the address which client send UDP to. Guess it if None.
@@ -33,13 +33,15 @@ class Connection:
         self._loop = get_event_loop()
         self.reader = reader
         self.writer = writer
+        self._disable_udp = disable_udp
 
-        if udp_bind is not None:
-            self._udp_bind = udp_bind
-        else:
-            self._udp_bind = self.writer.get_extra_info('sockname')[0]
-        self._port_pool = udp_port_pool
-        self._auth_method = auth_method
+        if not self._disable_udp:
+            if udp_bind is not None:
+                self._udp_bind = udp_bind
+            else:
+                self._udp_bind = self.writer.get_extra_info('sockname')[0]
+            self._port_pool = udp_port_pool
+            self._auth_method = auth_method
 
 
     @coroutine
@@ -54,6 +56,13 @@ class Connection:
             elif cmd == CMD_BIND:
                 yield from self._cmd_bind(addr, port)
             elif cmd == CMD_UDP_ASSOCIATE:
+                if self._disable_udp:
+                    logging.warning('UDP associate disabled. Reject request.')
+                    resp = pack('!BB8s', VERSION, REP_CMD_NOT_SUPPORTED,
+                                b'\x00\x01' + b'\x00' * 6)
+                    self.writer.write(resp)
+                    self.writer.write_eof()
+                    return
                 yield from self._cmd_udp_associate(addr, port)
             else:
                 resp = pack('!BB8s', VERSION, REP_CMD_NOT_SUPPORTED,

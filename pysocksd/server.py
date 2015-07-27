@@ -8,14 +8,15 @@ from pool import PortPool
 
 class Server:
 
-    def __init__(self, host, port, udp_ports=None, auth_method=None):
+    def __init__(self, bind, udp_ports=None, auth_method=None,
+                 disable_udp=False):
         """Listen on host:port.
 
         udp_ports is a tuple of (min, max) port numbers which client send
         UDP to. If not specify, use system-assigned ones.
         """
-        self.host = host
-        self.port = port
+        self.host, self.port = bind
+        self._disable_udp = disable_udp
         if udp_ports is not None:
             self._port_pool = PortPool(udp_ports[0],
                                        udp_ports[1] - udp_ports[0] + 1)
@@ -28,6 +29,7 @@ class Server:
     def run(self):
         self.server = yield from start_server(self._connected,
                                               self.host, self.port)
+        logging.info('Listening on %s:%s...', self.host, self.port)
 
 
     @coroutine
@@ -37,7 +39,8 @@ class Server:
         logging.debug("TCP established with %s:%s." % peername)
 
         conn = Connection(reader, writer, udp_port_pool=self._port_pool,
-                          auth_method=self._auth_method)
+                          auth_method=self._auth_method,
+                          disable_udp=self._disable_udp)
         yield from conn.run()
 
 
@@ -47,7 +50,7 @@ def main():
 
     loop = get_event_loop()
     auth = auth_test
-    server = Server('0.0.0.0', 10080, (60015, 60020), None)
+    server = Server(('0.0.0.0', 10080), (60015, 60020), None)
     loop.run_until_complete(server.run())
 
     try:

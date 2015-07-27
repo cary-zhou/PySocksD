@@ -1,7 +1,4 @@
-# Certs
-*.pem
-*.crt
-*.key
+test.ini
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -57,3 +54,4 @@ docs/_build/
 
 # PyBuilder
 target/
+
