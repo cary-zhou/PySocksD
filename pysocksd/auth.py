@@ -1,6 +1,6 @@
 from asyncio import coroutine
 
-from radius import RadiusClient
+from .radius import RadiusClient
 
 
 def auth_test(user, pwd):

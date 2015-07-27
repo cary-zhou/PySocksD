@@ -2,8 +2,8 @@
 import logging
 from asyncio import start_server, get_event_loop, coroutine
 
-from conn import Connection
-from pool import PortPool
+from .conn import Connection
+from .pool import PortPool
 
 
 class Server:

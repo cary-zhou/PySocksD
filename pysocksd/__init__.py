@@ -5,8 +5,8 @@ import logging
 from asyncio import get_event_loop
 from configparser import ConfigParser
 
-from server import Server
-from auth import AuthUserDict, AuthRadius
+from .server import Server
+from .auth import AuthUserDict, AuthRadius
 
 
 def _read_config():

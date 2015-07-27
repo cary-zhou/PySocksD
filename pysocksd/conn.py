@@ -4,8 +4,8 @@ from socket import inet_aton
 from asyncio import coroutine, open_connection, get_event_loop
 from ipaddress import IPv4Address, IPv6Address, ip_address
 
-from relay import UDPRelay
-from pool import PoolUnderflowError
+from .relay import UDPRelay
+from .pool import PoolUnderflowError
 
 
 VERSION = 0x05
