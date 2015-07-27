@@ -135,18 +135,24 @@ class Connection:
 
     @coroutine
     def _cmd_bind(self, addr, port):
-        self._reply_fail(REP_CMD_NOT_SUPPORTED,
-                         "BIND haven't been implemented.")
+        resp = pack('!BB8s', VERSION, REP_CMD_NOT_SUPPORTED,
+                    b'\x00\x01' + b'\x00' * 6)
+        raise ProtocolError("BIND haven't been implemented.", resp=resp)
 
 
     @coroutine
     def _cmd_udp_associate(self, addr, port):
-        if port:
-            client = (addr, port)
+        if port and str(addr) != '0.0.0.0':
+            client = (str(addr), port)
         else:
             client = None
-        self._relay = UDPRelay(bind=self._udp_bind, client=client)
+        bind = (self._udp_bind, 0)
+        self._relay = UDPRelay(bind, client)
         self._relay.start()
+        addr, port = self._relay.getsockname()
+        rsp = pack('!BBBB4sH', VERSION, REP_SUCCESSED, 0x00, ATYPE_IPV4,
+                   inet_aton(addr), port)
+        self.writer.write(rsp)
         logging.info('UDP relay started.')
         try:
             data = yield from self.reader.read()
