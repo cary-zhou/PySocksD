@@ -24,7 +24,8 @@ REP_CMD_NOT_SUPPORTED = 0x07
 REP_ATYPE_NOT_SUPPORTED = 0x08
 
 class Connection:
-    def __init__(self, reader, writer, udp_bind=None, udp_port_pool=None):
+    def __init__(self, reader, writer, udp_bind=None, udp_port_pool=None,
+                 auth_method=None):
         """Handshake with SOCKS client, handle TCP connect or create UDP relay.
 
         udp_bind is the address which client send UDP to. Guess it if None.
@@ -38,14 +39,16 @@ class Connection:
         else:
             self._udp_bind = self.writer.get_extra_info('sockname')[0]
         self._port_pool = udp_port_pool
+        self._auth_method = auth_method
 
 
     @coroutine
     def run(self):
         try:
-            yield from self._auth()
-            cmd, (addr, port) = yield from self._parse_request()
+            if not (yield from self._auth()):
+                return
 
+            cmd, (addr, port) = yield from self._parse_request()
             if cmd == CMD_CONNECT:
                 yield from self._cmd_connect(addr, port)
             elif cmd == CMD_BIND:
@@ -81,10 +84,42 @@ class Connection:
         if ver != VERSION:
             raise ProtocolError('Protocol version not match.')
         methods = yield from read(nmethods)
-        if AUTH_METHOD_NONE not in methods:
+
+        if self._auth_method is None:
+            method = AUTH_METHOD_NONE
+        else:
+            method = AUTH_METHOD_USERNAME
+        if method not in methods:
             resp = pack('!BB', VERSION, AUTH_METHOD_NO_ACCEPTABLE)
             raise ProtocolError('No acceptable auth methdos.', resp=resp)
-        self.writer.write(pack('!BB', VERSION, AUTH_METHOD_NONE))
+
+        self.writer.write(pack('!BB', VERSION, method))
+        if method == AUTH_METHOD_USERNAME:
+            return (yield from self._auth_username_password())
+        else:
+            return True
+
+
+    @coroutine
+    def _auth_username_password(self):
+        read = self.reader.readexactly
+        ver, ulen = unpack('!BB', (yield from read(2)))
+        if ver != 0x01:
+            raise ProtocolError('Auth protocol version not match.')
+        user, plen = unpack('!%ssB' % ulen, (yield from read(ulen + 1)))
+        pwd, = unpack('!%ss' % plen, (yield from read(plen)))
+        user, pwd = user.decode(), pwd.decode()
+        result = self._auth_method(user, pwd)
+        if not isinstance(result, bool):
+            result = yield from result
+        if result:
+            logging.info('User <%s> is authenticated.', user)
+            self.writer.write(pack('!BB', 0x01, 0x00))
+        else:
+            logging.warning('User <%s> fail to authenticate, rejected.', user)
+            self.writer.write(pack('!BB', 0x01, 0x01))
+            self.writer.write_eof()
+        return result
 
 
     @coroutine
@@ -177,10 +212,6 @@ class Connection:
         logging.info('UDP relay stopped.')
         if self._port_pool is not None:
             self._port_pool.put(port)
-
-
-class AuthError(Exception):
-    pass
 
 
 class ProtocolError(Exception):

@@ -8,7 +8,7 @@ from pool import PortPool
 
 class Server:
 
-    def __init__(self, host, port, udp_ports=None):
+    def __init__(self, host, port, udp_ports=None, auth_method=None):
         """Listen on host:port.
 
         udp_ports is a tuple of (min, max) port numbers which client send
@@ -21,6 +21,7 @@ class Server:
                                        udp_ports[1] - udp_ports[0] + 1)
         else:
             self._port_pool = None
+        self._auth_method = auth_method
 
 
     @coroutine
@@ -35,15 +36,18 @@ class Server:
         peername = writer.get_extra_info('peername')[:2]
         logging.debug("TCP established with %s:%s." % peername)
 
-        conn = Connection(reader, writer, udp_port_pool=self._port_pool)
+        conn = Connection(reader, writer, udp_port_pool=self._port_pool,
+                          auth_method=self._auth_method)
         yield from conn.run()
 
 
 def main():
+    from auth import auth_test
     logging.basicConfig(level=logging.DEBUG)
 
     loop = get_event_loop()
-    server = Server('0.0.0.0', 10080, (60015, 60020))
+    auth = auth_test
+    server = Server('0.0.0.0', 10080, (60015, 60020), auth)
     loop.run_until_complete(server.run())
 
     try:

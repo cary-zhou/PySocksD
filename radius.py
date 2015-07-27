@@ -9,8 +9,6 @@ from asyncio import coroutine, get_event_loop, wait_for, shield, sleep
 from asyncio import TimeoutError, Task
 from struct import pack, unpack
 
-from constant import RadiusCode, RadiusType
-
 
 MAX_RETRIES = 3
 TIMEOUT = 1
@@ -20,6 +18,35 @@ def _encode(s):
         return s.encode()
     else:
         return s
+
+
+class FrameType:
+    ECHO = 0x01
+    ECHO_REPLY = 0x02
+    IP = 0x03
+    AUTH = 0x04
+    AUTH_ACCEPT = 0x05
+    AUTH_ACCEPT_NO_CHANGE = 0x06
+    AUTH_REJECT = 0x07
+    DISCONNECT = 0x08
+
+
+class RadiusCode:
+    ACCESS_REQUEST = 1
+    ACCESS_ACCEPT = 2
+    ACCESS_REJECT = 3
+    ACCOUNTING_REQUEST = 4
+    ACCOUNTING_RESPONSE = 5
+
+
+class RadiusType:
+    USER_NAME = 1
+    USER_PASSWORD = 2
+    NAS_IP_ADDRESS = 4
+    NAS_PORT = 5
+    CALLED_STATION_ID = 30
+    CALLING_STATION_ID = 31
+    NAS_IDENTIFIER = 32
 
 
 class RadiusClient:
@@ -103,6 +130,7 @@ class RadiusClient:
         return code, attrs
 
 
+    @coroutine
     def auth(self, username, password, caller_id=None):
         self._id += 1
         self.nonce = os.urandom(16)
