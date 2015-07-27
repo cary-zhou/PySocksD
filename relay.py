@@ -1,6 +1,6 @@
 import socket
 import logging
-from socket import socket, inet_aton, SOCK_DGRAM
+from socket import socket, inet_aton, inet_ntoa, SOCK_DGRAM
 from struct import pack, unpack
 from asyncio import coroutine, get_event_loop
 
@@ -42,13 +42,14 @@ class UDPRelay:
     def _remote_income(self):
         data, (addr, port) = self._remote.recvfrom(2048)
         head = pack('!HBB4sH', 0x0000, 0x00, 0x01, inet_aton(addr), port)
-        self._local.write(head + data)
+        self._local.send(head + data)
 
 
     def _local_income(self):
         data, addr = self._local.recvfrom(2048)
-        if client is None:
-            self._local.connect(client)
+        if self._client is None:
+            self._client = addr
+            self._local.connect(self._client)
 
         rsv, frag, atype = unpack('!HBB', data[:4])
         if frag != 0x00:
@@ -58,6 +59,7 @@ class UDPRelay:
             logging.warning("Other than IPv4 not implemeneated, dropping.")
             return
         addr, port = unpack('!4sH', data[4:10])
+        addr = inet_ntoa(addr)
         data = data[10:]
         self._remote.sendto(data, (addr, port))
 
