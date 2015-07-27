@@ -47,7 +47,7 @@ def main():
 
     loop = get_event_loop()
     auth = auth_test
-    server = Server('0.0.0.0', 10080, (60015, 60020), auth)
+    server = Server('0.0.0.0', 10080, (60015, 60020), None)
     loop.run_until_complete(server.run())
 
     try:
