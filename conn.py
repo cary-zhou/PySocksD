@@ -1,7 +1,10 @@
 import logging
-from asyncio import coroutine, open_connection, get_event_loop
 from struct import pack, unpack
+from socket import inet_aton
+from asyncio import coroutine, open_connection, get_event_loop
 from ipaddress import IPv4Address, IPv6Address, ip_address
+
+from relay import UDPRelay
 
 
 VERSION = 0x05
@@ -36,27 +39,28 @@ class Connection:
 
     @coroutine
     def run(self):
-        yield from self._auth()
-        cmd, (addr, port) = yield from self._parse_request()
+        try:
+            yield from self._auth()
+            cmd, (addr, port) = yield from self._parse_request()
 
-        if cmd == CMD_CONNECT:
-            yield from self._cmd_connect(addr, port)
-        elif cmd == CMD_BIND:
-            yield from self._cmd_bind(addr, port)
-        elif cmd == CMD_UDP_ASSOCIATE:
-            yield from self._cmd_udp_associate(addr, port)
-        else:
-            self._reply_fail(REP_CMD_NOT_SUPPORTED,
-                             'Unknown CMD.')
+            if cmd == CMD_CONNECT:
+                yield from self._cmd_connect(addr, port)
+            elif cmd == CMD_BIND:
+                yield from self._cmd_bind(addr, port)
+            elif cmd == CMD_UDP_ASSOCIATE:
+                yield from self._cmd_udp_associate(addr, port)
+            else:
+                resp = pack('!BB8s', VERSION, REP_CMD_NOT_SUPPORTED,
+                            b'\x00\x01' + b'\x00' * 6)
+                raise ProtocolError('Unknown CMD.', resp=resp)
 
-
-    def _reply_fail(self, rep, reason=''):
-        if reason:
-            logging.warning('Reject request. %s', reason)
-        self.writer.write(pack('!BB', VERSION, rep))
-        # RSV(1) ATYPE(1) ADDR(4) PORT(2)
-        self.writer.write(b'\x00\x01' + b'\x00' * 6)
-        self.write_eof()
+        except ProtocolError as e:
+            logging.warning('Protocol error. %s', str(e))
+            if e.resp is not None:
+                self.writer.write(e.resp)
+                self.writer.write_eof()
+            else:
+                self.writer.close()
 
 
     @coroutine
@@ -64,20 +68,17 @@ class Connection:
         read = self.reader.readexactly
         ver, nmethods = unpack('!BB', (yield from read(2)))
         if ver != VERSION:
-            logging.warning('Protocol version not match.')
-            self.close()
-            return
+            raise ProtocolError('Protocol version not match.')
         methods = yield from read(nmethods)
         if AUTH_METHOD_NONE not in methods:
-            logging.warning('No acceptable auth methods.')
-            self.writer.write(pack('!BB', VERSION, AUTH_METHOD_NO_ACCEPTABLE))
-            self.writer.write_eof()
-            return
+            resp = pack('!BB', VERSION, AUTH_METHOD_NO_ACCEPTABLE)
+            raise ProtocolError('No acceptable auth methdos.', resp=resp)
         self.writer.write(pack('!BB', VERSION, AUTH_METHOD_NONE))
 
 
     @coroutine
     def _parse_request(self):
+        read = self.reader.readexactly
         ver, cmd, rsv, atype = unpack('!BBBB', (yield from read(4)))
         if atype == ATYPE_IPV4:
             addr = IPv4Address((yield from read(4)))
@@ -87,9 +88,9 @@ class Connection:
             length = ord((yield from read(1)))
             addr = (yield from read(length)).decode()
         else:
-            self._reply_fail(REP_ATYPE_NOT_SUPPORTED,
-                             'Unknown address type.')
-            return
+            resp = pack('!BB8s', VERSION, REP_ATYPE_NOT_SUPPORTED,
+                        b'\x00\x01' + b'\x00' * 6)
+            raise ProtocolError('Unknown address type.', resp=resp)
         port, = unpack('!H', (yield from read(2)))
         logging.debug('Request to %s:%s', addr, port)
         return cmd, (addr, port)
@@ -156,7 +157,13 @@ class Connection:
         logging.info('UDP relay stopped.')
 
 
-    def close(self):
-        self.reader.feed_eof()
-        self.writer.close()
+
+class AuthError(Exception):
+    pass
+
+
+class ProtocolError(Exception):
+    def __init__(self, *args, resp=None):
+        super().__init__(*args)
+        self.resp = resp
 
