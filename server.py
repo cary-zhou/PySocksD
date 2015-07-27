@@ -3,13 +3,24 @@ import logging
 from asyncio import start_server, get_event_loop, coroutine
 
 from conn import Connection
+from pool import PortPool
 
 
 class Server:
 
-    def __init__(self, host, port):
+    def __init__(self, host, port, udp_ports=None):
+        """Listen on host:port.
+
+        udp_ports is a tuple of (min, max) port numbers which client send
+        UDP to. If not specify, use system-assigned ones.
+        """
         self.host = host
         self.port = port
+        if udp_ports is not None:
+            self._port_pool = PortPool(udp_ports[0],
+                                       udp_ports[1] - udp_ports[0] + 1)
+        else:
+            self._port_pool = None
 
 
     @coroutine
@@ -24,7 +35,7 @@ class Server:
         peername = writer.get_extra_info('peername')[:2]
         logging.debug("TCP established with %s:%s." % peername)
 
-        conn = Connection(reader, writer)
+        conn = Connection(reader, writer, udp_port_pool=self._port_pool)
         yield from conn.run()
 
 
@@ -32,10 +43,13 @@ def main():
     logging.basicConfig(level=logging.DEBUG)
 
     loop = get_event_loop()
-    server = Server('0.0.0.0', 10080)
+    server = Server('0.0.0.0', 10080, (60015, 60020))
     loop.run_until_complete(server.run())
 
-    loop.run_forever()
+    try:
+        loop.run_forever()
+    except KeyboardInterrupt:
+        logging.info('Exit')
 
 
 if __name__ == '__main__':

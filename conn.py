@@ -5,6 +5,7 @@ from asyncio import coroutine, open_connection, get_event_loop
 from ipaddress import IPv4Address, IPv6Address, ip_address
 
 from relay import UDPRelay
+from pool import PoolUnderflowError
 
 
 VERSION = 0x05
@@ -23,7 +24,7 @@ REP_CMD_NOT_SUPPORTED = 0x07
 REP_ATYPE_NOT_SUPPORTED = 0x08
 
 class Connection:
-    def __init__(self, reader, writer, udp_bind=None):
+    def __init__(self, reader, writer, udp_bind=None, udp_port_pool=None):
         """Handshake with SOCKS client, handle TCP connect or create UDP relay.
 
         udp_bind is the address which client send UDP to. Guess it if None.
@@ -31,10 +32,12 @@ class Connection:
         self._loop = get_event_loop()
         self.reader = reader
         self.writer = writer
+
         if udp_bind is not None:
             self._udp_bind = udp_bind
         else:
             self._udp_bind = self.writer.get_extra_info('sockname')[0]
+        self._port_pool = udp_port_pool
 
 
     @coroutine
@@ -61,6 +64,14 @@ class Connection:
                 self.writer.write_eof()
             else:
                 self.writer.close()
+
+        except PoolUnderflowError:
+            logging.warn('No available ports. Reject UDP request.')
+            self.writer.close()
+
+        except OSError as e:
+            logging.warn('OS error occurs. %s.', e)
+            self.writer.close()
 
 
     @coroutine
@@ -146,7 +157,10 @@ class Connection:
             client = (str(addr), port)
         else:
             client = None
-        bind = (self._udp_bind, 0)
+        if self._port_pool is None:
+            bind = (self._udp_bind, 0)
+        else:
+            bind = (self._udp_bind, self._port_pool.next())
         self._relay = UDPRelay(bind, client)
         self._relay.start()
         addr, port = self._relay.getsockname()
@@ -161,7 +175,8 @@ class Connection:
         self._relay.stop()
         self._relay.close()
         logging.info('UDP relay stopped.')
-
+        if self._port_pool is not None:
+            self._port_pool.put(port)
 
 
 class AuthError(Exception):
