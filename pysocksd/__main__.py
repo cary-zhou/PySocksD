@@ -40,7 +40,9 @@ def main():
         radius = config['Radius Auth']
         auth_method = AuthRadius(radius.get('host', '127.0.0.1'),
                                  radius.getint('port', 1812),
-                                 radius.get('secret', 'test123'))
+                                 radius.get('secret', 'test123'),
+                                 radius.getfloat('timeout', 2),
+                                 radius.getint('max tries', 3))
     else:
         auth_method = None
 

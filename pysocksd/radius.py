@@ -10,9 +10,6 @@ from asyncio import TimeoutError, Task
 from struct import pack, unpack
 
 
-MAX_RETRIES = 3
-TIMEOUT = 1
-
 def _encode(s):
     if isinstance(s, str):
         return s.encode()
@@ -50,11 +47,11 @@ class RadiusType:
 
 
 class RadiusClient:
-    def __init__(self, address, port, secret, loop=None):
-        if loop is None:
-            self.loop = get_event_loop()
-        else:
-            self.loop = loop
+    timeout = 2
+    max_tries = 3
+
+    def __init__(self, address, port, secret):
+        self.loop = get_event_loop()
         self.address = address
         self.port = port
         self.secret = _encode(secret)
@@ -138,7 +135,7 @@ class RadiusClient:
 
         fut_recv = Task(self._recv_response())
         code = None
-        for i in range(MAX_RETRIES):
+        for i in range(self.max_tries):
             try:
                 yield from self._send_access_request(username, password, caller_id)
             except ConnectionError as e:
@@ -147,7 +144,7 @@ class RadiusClient:
                 continue
 
             try:
-                code, attrs = yield from wait_for(shield(fut_recv), TIMEOUT, loop=self.loop)
+                code, attrs = yield from wait_for(shield(fut_recv), self.timeout)
                 break
             except TimeoutError:
                 # No need to restart task, since it is protected by shield().
