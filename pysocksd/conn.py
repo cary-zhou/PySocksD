@@ -34,7 +34,6 @@ class Connection:
         self.reader = reader
         self.writer = writer
         self._disable_udp = disable_udp
-
         if not self._disable_udp:
             if udp_bind is not None:
                 self._udp_bind = udp_bind
@@ -42,6 +41,8 @@ class Connection:
                 self._udp_bind = self.writer.get_extra_info('sockname')[0]
             self._port_pool = udp_port_pool
             self._auth_method = auth_method
+
+        self._client_addr = self.writer.get_extra_info('peername')[:2]
 
 
     @coroutine
@@ -118,7 +119,7 @@ class Connection:
         user, plen = unpack('!%ssB' % ulen, (yield from read(ulen + 1)))
         pwd, = unpack('!%ss' % plen, (yield from read(plen)))
         user, pwd = user.decode(), pwd.decode()
-        result = self._auth_method(user, pwd)
+        result = self._auth_method(user, pwd, self._client_addr)
         if not isinstance(result, bool):
             result = yield from result
         if result:

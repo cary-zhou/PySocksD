@@ -3,7 +3,7 @@ from asyncio import coroutine
 from .radius import RadiusClient
 
 
-def auth_test(user, pwd):
+def auth_test(user, pwd, host):
     return user == pwd
 
 
@@ -12,7 +12,7 @@ class AuthUserDict:
         self._dict = user_passwords
 
 
-    def __call__(self, user, pwd):
+    def __call__(self, user, pwd, host):
         return self._dict.get(user) == pwd
 
 
@@ -24,6 +24,7 @@ class AuthRadius:
 
 
     @coroutine
-    def __call__(self, user, pwd):
-        return (yield from self._radius.auth(user, pwd))
+    def __call__(self, user, pwd, host):
+        caller = '%s:%s' % host
+        return (yield from self._radius.auth(user, pwd, caller))
 
