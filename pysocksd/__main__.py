@@ -55,7 +55,9 @@ def main():
             udp_ports = None
 
     loop = get_event_loop()
-    server = Server(bind, udp_ports, auth_method, disable_udp)
+    server = Server(bind, udp_ports,
+                    auth_method=auth_method,
+                    disable_udp=disable_udp)
     loop.run_until_complete(server.run())
     try:
         loop.run_forever()

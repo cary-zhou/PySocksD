@@ -8,21 +8,21 @@ from .pool import PortPool
 
 class Server:
 
-    def __init__(self, bind, udp_ports=None, auth_method=None,
-                 disable_udp=False):
-        """Listen on host:port.
+    def __init__(self, bind, udp_ports, **kwargs):
+        """Bind is a tuple of (address, port) which the server bind to.
 
         udp_ports is a tuple of (min, max) port numbers which client send
         UDP to. If not specify, use system-assigned ones.
+
+        Ohter kwargs will be passed to Connection.
         """
         self.host, self.port = bind
-        self._disable_udp = disable_udp
+        self._conn_kwargs = kwargs
         if udp_ports is not None:
             self._port_pool = PortPool(udp_ports[0],
                                        udp_ports[1] - udp_ports[0] + 1)
         else:
             self._port_pool = None
-        self._auth_method = auth_method
 
 
     @coroutine
@@ -39,26 +39,7 @@ class Server:
         logging.debug("TCP established with %s:%s." % peername)
 
         conn = Connection(reader, writer, udp_port_pool=self._port_pool,
-                          auth_method=self._auth_method,
-                          disable_udp=self._disable_udp)
+                          **self._conn_kwargs)
         yield from conn.run()
 
-
-def main():
-    from auth import auth_test
-    logging.basicConfig(level=logging.DEBUG)
-
-    loop = get_event_loop()
-    auth = auth_test
-    server = Server(('0.0.0.0', 10080), (60015, 60020), None)
-    loop.run_until_complete(server.run())
-
-    try:
-        loop.run_forever()
-    except KeyboardInterrupt:
-        logging.info('Exit')
-
-
-if __name__ == '__main__':
-    main()
 
