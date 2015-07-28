@@ -17,6 +17,7 @@ Features
 TODOs
 -----
 
+* RADIUS cache
 * RADIUS accounting
 * IPv6
 * TCP bind
