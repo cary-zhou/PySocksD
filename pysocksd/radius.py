@@ -112,7 +112,7 @@ class RadiusClient:
     def _recv_response(self):
         while True:
             data = yield from self.loop.sock_recv(self.sock, 4096)
-            code, pid, length, auth = unpack('!BBH16s', data)
+            code, pid, length, auth = unpack('!BBH16s', data[:20])
             attrs = data[20:]
 
             if pid in self._received_ids:
