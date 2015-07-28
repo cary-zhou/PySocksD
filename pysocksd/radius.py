@@ -62,6 +62,7 @@ class RadiusClient:
         self._id = 0
         self._received_ids = set()
         self.sock = socket.socket(type=socket.SOCK_DGRAM)
+        self.sock.setblocking(False)
         self.sock.connect((address, port))
         self.nas_ip = _encode(self.sock.getsockname()[0])
 
@@ -153,16 +154,16 @@ class RadiusClient:
                 logging.warning("Timeout, re-send RADIUS request.")
             except ValueError as e:
                 logging.warning("Malformed RADIUS packet received: %s" % e)
+                logging.info("Please check the shared secret.")
                 fut_recv = Task(self._recv_response())
             except ConnectionError as e:
                 logging.warn("Failed to receive RADIUS response: %s" % e)
                 yield from sleep(TIMEOUT, loop=self.loop)
                 fut_recv = Task(self._recv_response())
-                continue
 
 
         if code is None:
-            logging.warning("Timeout. RADIUS server did not response.")
+            logging.warning("Timeout. No valid RADIUS response.")
             fut_recv.cancel()
         elif code == RadiusCode.ACCESS_ACCEPT:
             logging.debug("RADIUS Access-Accept packet received.")
