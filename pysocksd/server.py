@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 import logging
 from asyncio import start_server, get_event_loop, coroutine
+from functools import partial
 
 from .conn import Connection
 from .pool import PortPool
+from .acct import Session
 
 
 class Server:
 
-    def __init__(self, bind, udp_ports, **kwargs):
+    def __init__(self, bind, udp_ports, auth_method, **kwargs):
         """Bind is a tuple of (address, port) which the server bind to.
 
         udp_ports is a tuple of (min, max) port numbers which client send
@@ -23,6 +25,12 @@ class Server:
                                        udp_ports[1] - udp_ports[0] + 1)
         else:
             self._port_pool = None
+
+        if hasattr(auth_method, 'session') and auth_method.session:
+            self._auth_method = partial(self._auth_session, auth_method)
+            self._sessions = {}
+        else:
+            self._auth_method = auth_method
 
 
     @coroutine
@@ -39,7 +47,30 @@ class Server:
         logging.debug("TCP established with %s:%s." % peername)
 
         conn = Connection(reader, writer, udp_port_pool=self._port_pool,
-                          **self._conn_kwargs)
+                          auth_method=self._auth_method, **self._conn_kwargs)
         yield from conn.run()
 
+
+    @coroutine
+    def _auth_session(self, auth_method, user, pwd, **kwargs):
+        """Simulate sessions and do authentication only for new session."""
+        key = (user, pwd, kwargs['host'][0])
+        if key in self._sessions:
+            self._sessions[key].conn_open()
+            return True
+        else:
+            result = yield from auth_method(user, pwd, **kwargs)
+            if result:
+                session = Session(key, self._session_close, 300)
+                kwargs['conn'].disconnect.add_done_callback(
+                        lambda fn: session.conn_close())
+                self._sessions[key] = session
+                logging.debug('Session (%s) opened.', session)
+            return result
+
+
+    def _session_close(self, session):
+        """Invoked after a session is closed."""
+        del self._sessions[session.key]
+        logging.debug('Session (%s) closed.', session)
 

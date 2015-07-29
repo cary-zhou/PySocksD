@@ -1,7 +1,7 @@
 import logging
 from struct import pack, unpack
 from socket import inet_aton
-from asyncio import coroutine, open_connection, get_event_loop
+from asyncio import coroutine, open_connection, get_event_loop, Future
 from ipaddress import IPv4Address, IPv6Address, ip_address
 
 from .relay import UDPRelay
@@ -24,6 +24,7 @@ REP_CMD_NOT_SUPPORTED = 0x07
 REP_ATYPE_NOT_SUPPORTED = 0x08
 
 class Connection:
+
     def __init__(self, reader, writer, udp_bind=None, udp_port_pool=None,
                  auth_method=None, disable_udp=False):
         """Handshake with SOCKS client, handle TCP connect or create UDP relay.
@@ -33,6 +34,7 @@ class Connection:
         self._loop = get_event_loop()
         self.reader = reader
         self.writer = writer
+        self.disconnect = Future()
         self._disable_udp = disable_udp
         if not self._disable_udp:
             if udp_bind is not None:
@@ -86,6 +88,9 @@ class Connection:
             logging.warn('OS error occurs. %s.', e)
             self.writer.close()
 
+        finally:
+            self.disconnect.set_result(None)
+
 
     @coroutine
     def _auth(self):
@@ -119,7 +124,8 @@ class Connection:
         user, plen = unpack('!%ssB' % ulen, (yield from read(ulen + 1)))
         pwd, = unpack('!%ss' % plen, (yield from read(plen)))
         user, pwd = user.decode(), pwd.decode()
-        result = self._auth_method(user, pwd, self._client_addr)
+        result = self._auth_method(user, pwd, host=self._client_addr,
+                                   conn=self)
         if not isinstance(result, bool):
             result = yield from result
         if result:
