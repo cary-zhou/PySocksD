@@ -1,7 +1,8 @@
 import logging
 from struct import pack, unpack
 from socket import inet_aton
-from asyncio import coroutine, open_connection, get_event_loop, Future
+from asyncio import coroutine, open_connection, get_event_loop, Future, \
+        IncompleteReadError
 from ipaddress import IPv4Address, IPv6Address, ip_address
 
 from .relay import UDPRelay
@@ -72,9 +73,9 @@ class Connection:
                             b'\x00\x01' + b'\x00' * 6)
                 raise ProtocolError('Unknown CMD.', resp=resp)
 
-        except ProtocolError as e:
+        except (ProtocolError, IncompleteReadError) as e:
             logging.warning('Protocol error. %s', str(e))
-            if e.resp is not None:
+            if hasattr(e, 'resp') and e.resp is not None:
                 self.writer.write(e.resp)
                 self.writer.write_eof()
             else:
