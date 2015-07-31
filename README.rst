@@ -14,10 +14,18 @@ Features
 * Pure Python, standard library only.
 
 
+Usage
+-----
+
+::
+    git clone https://github.com/sorz/PySocksD
+    cd PySocksD
+    python3 -m pysocksd -c config.ini
+
+
 TODOs
 -----
 
-* RADIUS cache
 * RADIUS accounting
 * IPv6
 * TCP bind
