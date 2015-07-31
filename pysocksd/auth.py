@@ -20,13 +20,16 @@ class AuthRadius:
     session = True
 
     def __init__(self, addr, port, secret, timeout=2, max_tries=3):
-        self._radius = RadiusClient(addr, port, secret)
-        self._radius.timeout = timeout
-        self._radius.max_tries = max_tries
+        self._args = (addr, port, secret)
+        self._timeout = timeout
+        self._max_tries = max_tries
 
 
     @coroutine
     def __call__(self, user, pwd, **kwargs):
+        radius = RadiusClient(*self._args)
+        radius.timeout = self._timeout
+        radius._max_tries = self._max_tries
         caller = '%s:%s' % kwargs['host']
-        return (yield from self._radius.auth(user, pwd, caller))
+        return (yield from radius.auth(user, pwd, caller))
 
