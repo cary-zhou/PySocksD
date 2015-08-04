@@ -20,7 +20,7 @@ class AuthRadius:
     session = True
 
     def __init__(self, addr, port, secret, timeout=2, max_tries=3):
-        self._args = (addr, port, secret)
+        self._args = (secret, addr, port)
         self._timeout = timeout
         self._max_tries = max_tries
 
