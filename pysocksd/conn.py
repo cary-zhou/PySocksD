@@ -1,7 +1,7 @@
 import logging
 from struct import pack, unpack
 from socket import inet_aton
-from asyncio import coroutine, open_connection, get_event_loop, Future, \
+from asyncio import coroutine, open_connection, get_event_loop, wait, Future, \
         IncompleteReadError
 from ipaddress import IPv4Address, IPv6Address, ip_address
 
@@ -56,7 +56,8 @@ class Connection:
 
             cmd, (addr, port) = yield from self._parse_request()
             if cmd == CMD_CONNECT:
-                yield from self._cmd_connect(addr, port)
+                tasks = yield from self._cmd_connect(addr, port)
+                yield from wait(tasks)
             elif cmd == CMD_BIND:
                 yield from self._cmd_bind(addr, port)
             elif cmd == CMD_UDP_ASSOCIATE:
@@ -173,10 +174,9 @@ class Connection:
             self.writer.write(pack('!B16sH',
                                    ATYPE_IPV6, bind_addr.packed, bind_port))
         logging.debug('Start piping.')
-        self._forward_to_remote = \
-                self._loop.create_task(self._pipe(self.reader, writer))
-        self._forward_to_local = \
-                self._loop.create_task(self._pipe(reader, self.writer))
+        to_remote = self._loop.create_task(self._pipe(self.reader, writer))
+        to_local = self._loop.create_task(self._pipe(reader, self.writer))
+        return to_remote, to_local
 
 
     @coroutine
