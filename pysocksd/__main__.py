@@ -33,6 +33,8 @@ def main():
     bind = (default.get('bind address', '0.0.0.0'),
             default.getint('bind port', 8080))
 
+    timeout = default.getint('idle timeout', 300)
+
     auth = default.get('auth', 'no')
     if auth == 'file':
         auth_method = AuthUserDict(config['Users'])
@@ -59,7 +61,8 @@ def main():
     loop = get_event_loop()
     server = Server(bind, udp_ports,
                     auth_method=auth_method,
-                    disable_udp=disable_udp)
+                    disable_udp=disable_udp,
+                    timeout=timeout)
     loop.run_until_complete(server.run())
     try:
         loop.run_forever()

@@ -1,8 +1,8 @@
 import logging
 from struct import pack, unpack
 from socket import inet_aton
-from asyncio import coroutine, open_connection, get_event_loop, wait, Future, \
-        IncompleteReadError
+from asyncio import coroutine, open_connection, get_event_loop, wait, wait_for
+from asyncio import Future, IncompleteReadError, TimeoutError
 from ipaddress import IPv4Address, IPv6Address, ip_address
 
 from .relay import UDPRelay
@@ -29,7 +29,7 @@ BUFFER_SIZE = 8196
 class Connection:
 
     def __init__(self, reader, writer, udp_bind=None, udp_port_pool=None,
-                 auth_method=None, disable_udp=False):
+                 auth_method=None, disable_udp=False, timeout=300):
         """Handshake with SOCKS client, handle TCP connect or create UDP relay.
 
         udp_bind is the address which client send UDP to. Guess it if None.
@@ -48,6 +48,28 @@ class Connection:
             self._auth_method = auth_method
 
         self._client_addr = self.writer.get_extra_info('peername')[:2]
+
+        self._timeout = timeout
+        self._running = True
+        self._poke()
+        self._idle_timer = self._loop.call_later(self._timeout, self._check_idle)
+
+
+    def _poke(self):
+        if self._running:
+            self._last_active = self._loop.time()
+
+
+    def _check_idle(self):
+        idle_time = self._loop.time() - self._last_active
+        if idle_time > self._timeout:
+            logging.debug('Idle timeout.')
+            self._running = False
+            self.reader.feed_eof()
+            self.writer.write_eof()
+        else:
+            self._idle_timer = self._loop.call_later(self._timeout - idle_time,
+                                                     self._check_idle)
 
 
     @coroutine
@@ -93,6 +115,8 @@ class Connection:
             self.writer.close()
 
         finally:
+            logging.debug('Disconnected.')
+            self._idle_timer.cancel()
             self.disconnect.set_result(None)
 
 
@@ -183,19 +207,28 @@ class Connection:
 
     @coroutine
     def _pipe(self, reader, writer):
-        try:
-            data = yield from reader.read(BUFFER_SIZE)
-            while data:
-                writer.write(data)
-                yield from writer.drain()
-                data = yield from reader.read(BUFFER_SIZE)
-        except ConnectionError as e:
-            logging.warning('Exception on read: %s.', e)
-            writer.close()
-        else:
-            logging.debug('EOF')
-            if hasattr(writer, '_sock'):
-                writer.write_eof()
+        while self._running:
+            try:
+                data = yield from wait_for(reader.read(BUFFER_SIZE),
+                                           self._timeout)
+                while data:
+                    self._poke()
+                    writer.write(data)
+                    yield from writer.drain()
+                    data = yield from wait_for(reader.read(BUFFER_SIZE),
+                                               self._timeout)
+            except TimeoutError:
+                if not self._running:
+                    writer.close()
+                continue
+            except ConnectionError as e:
+                logging.warning('Exception on read: %s.', e)
+                writer.close()
+            else:
+                logging.debug('EOF')
+                if hasattr(writer, '_sock'):
+                    writer.write_eof()
+            break  # Only continue when TimeoutError occur.
 
 
     @coroutine
@@ -215,17 +248,21 @@ class Connection:
             bind = (self._udp_bind, 0)
         else:
             bind = (self._udp_bind, self._port_pool.next())
-        self._relay = UDPRelay(bind, client)
+        self._relay = UDPRelay(bind, client, self._poke)
         self._relay.start()
         addr, port = self._relay.getsockname()
         rsp = pack('!BBBB4sH', VERSION, REP_SUCCESSED, 0x00, ATYPE_IPV4,
                    inet_aton(addr), port)
         self.writer.write(rsp)
         logging.info('UDP relay started.')
-        try:
-            data = yield from self.reader.read()
-        except ConnectionError as e:
-            logging.debug('Connection error: %s', e)
+        while self._running:
+            try:
+                data = yield from wait_for(self.reader.read(), self._timeout)
+            except TimeoutError as e:
+                continue
+            except ConnectionError as e:
+                logging.debug('Connection error: %s', e)
+            break
         self._relay.stop()
         self._relay.close()
         logging.info('UDP relay stopped.')
