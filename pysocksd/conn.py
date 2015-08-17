@@ -24,6 +24,8 @@ REP_SERVER_FAIL = 0X01
 REP_CMD_NOT_SUPPORTED = 0x07
 REP_ATYPE_NOT_SUPPORTED = 0x08
 
+BUFFER_SIZE = 8196
+
 class Connection:
 
     def __init__(self, reader, writer, udp_bind=None, udp_port_pool=None,
@@ -166,7 +168,7 @@ class Connection:
         reader, writer = yield from open_connection(str(addr), port)
         bind_addr, bind_port = writer.get_extra_info('sockname')[:2]
         bind_addr = ip_address(bind_addr)
-        self.writer.write(pack('!BB', VERSION, REP_SUCCESSED))
+        self.writer.write(pack('!BBB', VERSION, REP_SUCCESSED, 0x00))
         if isinstance(bind_addr, IPv4Address):
             self.writer.write(pack('!B4sH',
                                    ATYPE_IPV4, bind_addr.packed, bind_port))
@@ -182,11 +184,11 @@ class Connection:
     @coroutine
     def _pipe(self, reader, writer):
         try:
-            data = yield from reader.read()
+            data = yield from reader.read(BUFFER_SIZE)
             while data:
                 writer.write(data)
                 yield from writer.drain()
-                data = yield from reader.read()
+                data = yield from reader.read(BUFFER_SIZE)
         except ConnectionError as e:
             logging.warning('Exception on read: %s.', e)
             writer.close()
