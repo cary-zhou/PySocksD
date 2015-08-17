@@ -66,7 +66,10 @@ class Connection:
             logging.debug('Idle timeout.')
             self._running = False
             self.reader.feed_eof()
-            self.writer.write_eof()
+            if hasattr(self.writer, '_sock'):
+                writer.write_eof()
+            if hasattr(self, '_remote_reader'):
+                self._remote_reader.feed_eof()
         else:
             self._idle_timer = self._loop.call_later(self._timeout - idle_time,
                                                      self._check_idle)
@@ -200,6 +203,7 @@ class Connection:
             self.writer.write(pack('!B16sH',
                                    ATYPE_IPV6, bind_addr.packed, bind_port))
         logging.debug('Start piping.')
+        self._remote_reader = reader  # Enable feed_eof() called by others.
         to_remote = self._loop.create_task(self._pipe(self.reader, writer))
         to_local = self._loop.create_task(self._pipe(reader, self.writer))
         return to_remote, to_local
@@ -207,28 +211,20 @@ class Connection:
 
     @coroutine
     def _pipe(self, reader, writer):
-        while self._running:
-            try:
-                data = yield from wait_for(reader.read(BUFFER_SIZE),
-                                           self._timeout)
-                while data:
-                    self._poke()
-                    writer.write(data)
-                    yield from writer.drain()
-                    data = yield from wait_for(reader.read(BUFFER_SIZE),
-                                               self._timeout)
-            except TimeoutError:
-                if not self._running:
-                    writer.close()
-                continue
-            except ConnectionError as e:
-                logging.warning('Exception on read: %s.', e)
-                writer.close()
-            else:
-                logging.debug('EOF')
-                if hasattr(writer, '_sock'):
-                    writer.write_eof()
-            break  # Only continue when TimeoutError occur.
+        try:
+            data = yield from reader.read(BUFFER_SIZE)
+            while data:
+                self._poke()
+                writer.write(data)
+                yield from writer.drain()
+                data = yield from reader.read(BUFFER_SIZE)
+        except ConnectionError as e:
+            logging.warning('Exception on read: %s.', e)
+            writer.close()
+        else:
+            logging.debug('EOF')
+            if hasattr(writer, '_sock'):
+                writer.write_eof()
 
 
     @coroutine
@@ -255,14 +251,10 @@ class Connection:
                    inet_aton(addr), port)
         self.writer.write(rsp)
         logging.info('UDP relay started.')
-        while self._running:
-            try:
-                data = yield from wait_for(self.reader.read(), self._timeout)
-            except TimeoutError as e:
-                continue
-            except ConnectionError as e:
-                logging.debug('Connection error: %s', e)
-            break
+        try:
+            data = yield from self.reader.read()
+        except ConnectionError as e:
+            logging.debug('Connection error: %s', e)
         self._relay.stop()
         self._relay.close()
         logging.info('UDP relay stopped.')
