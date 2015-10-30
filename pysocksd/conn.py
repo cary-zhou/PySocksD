@@ -241,12 +241,14 @@ class Connection:
         else:
             client = None
         if self._port_pool is None:
-            bind = (self._udp_bind, 0)
+            bind = ('0.0.0.0', 0)
         else:
-            bind = (self._udp_bind, self._port_pool.next())
+            bind = ('0.0.0.0', self._port_pool.next())
         self._relay = UDPRelay(bind, client, self._poke)
         self._relay.start()
         addr, port = self._relay.getsockname()
+        if self._udp_bind is not None:
+            addr = self._udp_bind
         rsp = pack('!BBBB4sH', VERSION, REP_SUCCESSED, 0x00, ATYPE_IPV4,
                    inet_aton(addr), port)
         self.writer.write(rsp)

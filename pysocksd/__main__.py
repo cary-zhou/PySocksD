@@ -62,6 +62,7 @@ def main():
     server = Server(bind, udp_ports,
                     auth_method=auth_method,
                     disable_udp=disable_udp,
+                    udp_bind=udp_bind,
                     timeout=timeout)
     loop.run_until_complete(server.run())
     try:
