@@ -28,8 +28,9 @@ BUFFER_SIZE = 8196
 
 class Connection:
 
-    def __init__(self, reader, writer, udp_bind=None, udp_port_pool=None,
-                 auth_method=None, disable_udp=False, timeout=300):
+    def __init__(self, reader, writer, udp_bind='0.0.0.0', udp_extern=None,
+                 udp_port_pool=None, auth_method=None, disable_udp=False,
+                 timeout=300):
         """Handshake with SOCKS client, handle TCP connect or create UDP relay.
 
         udp_bind is the address which client send UDP to. Guess it if None.
@@ -40,10 +41,8 @@ class Connection:
         self.disconnect = Future()
         self._disable_udp = disable_udp
         if not self._disable_udp:
-            if udp_bind is not None:
-                self._udp_bind = udp_bind
-            else:
-                self._udp_bind = self.writer.get_extra_info('sockname')[0]
+            self._udp_bind = udp_bind
+            self._udp_extern = udp_extern
             self._port_pool = udp_port_pool
             self._auth_method = auth_method
 
@@ -241,14 +240,14 @@ class Connection:
         else:
             client = None
         if self._port_pool is None:
-            bind = ('0.0.0.0', 0)
+            bind = (self._udp_bind, 0)
         else:
-            bind = ('0.0.0.0', self._port_pool.next())
+            bind = (self._udp_bind, self._port_pool.next())
         self._relay = UDPRelay(bind, client, self._poke)
         self._relay.start()
         addr, port = self._relay.getsockname()
-        if self._udp_bind is not None:
-            addr = self._udp_bind
+        if self._udp_extern is not None:
+            addr = self._udp_extern
         rsp = pack('!BBBB4sH', VERSION, REP_SUCCESSED, 0x00, ATYPE_IPV4,
                    inet_aton(addr), port)
         self.writer.write(rsp)

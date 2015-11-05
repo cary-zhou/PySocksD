@@ -51,10 +51,11 @@ def main():
     udp = config['UDP Relay']
     disable_udp = not udp.getboolean('enable', False)
     if disable_udp:
-        udp_bind = udp_ports = None
+        udp_bind = udp_ports = udp_extern = None
     else:
-        udp_bind = udp.get('address')
+        udp_bind = udp.get('bind address', '0.0.0.0')
         udp_ports = (udp.getint('port from'), udp.getint('port to'))
+        udp_extern = udp.get('extern address')
         if None in udp_ports:
             udp_ports = None
 
@@ -63,6 +64,7 @@ def main():
                     auth_method=auth_method,
                     disable_udp=disable_udp,
                     udp_bind=udp_bind,
+                    udp_extern=udp_extern,
                     timeout=timeout)
     loop.run_until_complete(server.run())
     try:
