@@ -59,13 +59,18 @@ def test_udp():
     addr = socket.inet_ntoa(addr)
     assert addr == '1.2.3.4'
 
-    # Send UDP request
+    # Test UDP sending
     udp = socket.socket(type=socket.SOCK_DGRAM)
     udp.bind(('127.0.0.1', 12345))
     head = pack('!HBB4sH', 0, 0, 1, socket.inet_aton('127.0.0.1'), 12345)
     udp.sendto(head + b'abc123', ('127.0.0.1', port))
-    data, _ = udp.recvfrom(1024)
+    data, addr = udp.recvfrom(1024)
     assert data == b'abc123'
+
+    # Test UDP receiving
+    udp.sendto(b'xyz789', addr)
+    data, addr = udp.recvfrom(1024)
+    assert data == b'\x00\x00\x00\x01\x7f\x00\x00\x01\x30\x39xyz789'
 
     udp.close()
     conn.close()
@@ -73,11 +78,12 @@ def test_udp():
 
 def main():
     process = Popen(ARGS + ['tests/test-auth-file.ini'])
-    time.sleep(1)
+    time.sleep(0.5)
     try:
         test_tcp()
         test_udp()
     finally:
+        time.sleep(0.5)
         process.terminate()
 
 
