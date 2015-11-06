@@ -219,6 +219,8 @@ class Connection:
                 yield from writer.drain()
                 trans_bytes += len(data)
                 data = yield from reader.read(BUFFER_SIZE)
+                if not data:
+                    break
         except ConnectionError as e:
             logging.warning('Exception on read: %s.', e)
             writer.close()
