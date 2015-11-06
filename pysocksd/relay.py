@@ -21,6 +21,11 @@ class UDPRelay:
         if client is not None:
             self._loop.sock_connect(self._local, client)
 
+        self.stats_recv_pkts = 0
+        self.stats_sent_pkts = 0
+        self.stats_recv_bytes = 0
+        self.stats_sent_bytes = 0
+
 
     def getsockname(self):
         return self._local.getsockname()
@@ -51,6 +56,9 @@ class UDPRelay:
         head = pack('!HBB4sH', 0x0000, 0x00, 0x01, inet_aton(addr), port)
         self._local.send(head + data)
 
+        self.stats_recv_pkts += 1
+        self.stats_recv_bytes += len(data)
+
 
     def _local_income(self):
         if self._poke is not None:
@@ -71,4 +79,7 @@ class UDPRelay:
         addr = inet_ntoa(addr)
         data = data[10:]
         self._remote.sendto(data, (addr, port))
+
+        self.stats_sent_pkts += 1
+        self.stats_sent_bytes += len(data)
 

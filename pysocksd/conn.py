@@ -258,7 +258,12 @@ class Connection:
             logging.debug('Connection error: %s', e)
         self._relay.stop()
         self._relay.close()
-        logging.info('UDP relay stopped.')
+        logging.info('UDP relay stopped, '
+                     'sent %s (%s bytes), recv %s (%s bytes).' % (
+                         self._relay.stats_sent_pkts,
+                         self._relay.stats_sent_bytes,
+                         self._relay.stats_recv_pkts,
+                         self._relay.stats_recv_bytes))
         if self._port_pool is not None:
             self._port_pool.put(port)
 
