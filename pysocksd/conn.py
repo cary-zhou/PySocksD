@@ -210,18 +210,20 @@ class Connection:
 
     @coroutine
     def _pipe(self, reader, writer):
+        trans_bytes = 0
         try:
             data = yield from reader.read(BUFFER_SIZE)
             while data:
                 self._poke()
                 writer.write(data)
                 yield from writer.drain()
+                trans_bytes += len(data)
                 data = yield from reader.read(BUFFER_SIZE)
         except ConnectionError as e:
             logging.warning('Exception on read: %s.', e)
             writer.close()
         else:
-            logging.debug('EOF')
+            logging.debug('EOF, %s bytes forwarded.' % trans_bytes)
             if hasattr(writer, '_sock'):
                 writer.write_eof()
 
