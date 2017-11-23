@@ -44,7 +44,7 @@ class Connection:
             self._udp_bind = udp_bind
             self._udp_extern = udp_extern
             self._port_pool = udp_port_pool
-            self._auth_method = auth_method
+        self._auth_method = auth_method
 
         self._client_addr = self.writer.get_extra_info('peername')[:2]
 
